@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function hasSetup() { return exists(/databases/$(database)/documents/meta/setup); }
+    function isOwner() { return signedIn() && hasSetup() && get(/databases/$(database)/documents/meta/setup).data.ownerUid == request.auth.uid; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isActive() { return isOwner() || (hasProfile() && me().active == true); }
+    function isAdmin() { return isOwner() || (hasProfile() && me().active == true && me().role == 'admin'); }
+
+    // أول حساب بيتعمل بيبقى صاحب الأبلكيشن، ومرة واحدة بس
+    match /meta/setup {
+      allow read: if true;
+      allow create: if signedIn() && !hasSetup()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['ownerUid', 'at']);
+      allow update, delete: if false;
+    }
+
+    // الحسابات: الكل يقرا، المدير بس يضيف ويعدّل، ومحدش يقدر يعدّل صاحب الأبلكيشن غيره
+    match /users/{uid} {
+      allow read: if isActive();
+      allow create, update: if isAdmin()
+        && (!hasSetup() || uid != get(/databases/$(database)/documents/meta/setup).data.ownerUid || isOwner());
+      allow delete: if false;
+    }
+
+    // الورديات: أي حساب مفعّل يقرا ويكتب، والمدير بس يمسح
+    match /shifts/{id} {
+      allow read, create, update: if isActive();
+      allow delete: if isAdmin();
+    }
+  }
+}
