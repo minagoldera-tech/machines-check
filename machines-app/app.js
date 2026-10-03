@@ -136,9 +136,11 @@ function enter(p) {
   <div class="sheetbg" id="sheet" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetT">
     <h2 id="sheetT">تقرير الوردية</h2>
     <div class="warn" id="sheetWarn" hidden></div>
-    <pre class="msg" id="sheetMsg"></pre>
-    <div class="acts"><a class="btn wa big" id="waGo" href="#" target="_blank" rel="noopener">${ICON.wa}<span id="waGoT">افتح واتساب واختار الجروب</span></a><button class="btn" id="copyMsg">انسخ الرسالة</button><button class="btn" id="closeSheet">رجوع</button></div>
-    <div class="meta">واتساب هيفتح والرسالة جاهزة. اختار جروب الماكينات ودوس إرسال.</div>
+    <div class="imgprev" id="imgPrev"><div class="meta">جاري تجهيز صورة الجدول…</div></div>
+    <details class="txtprev"><summary>الرسالة النصية اللي هتتبعت مع الصورة</summary><pre class="msg" id="sheetMsg"></pre></details>
+    <div class="acts"><button class="btn wa big" id="shareImg" disabled>${ICON.wa}<span id="waGoT">ابعت الصورة والتقرير</span></button><button class="btn" id="closeSheet">رجوع</button></div>
+    <div class="acts small"><a class="link" id="waGo" href="#" target="_blank" rel="noopener">ابعت نص بس</a><button class="link" id="copyMsg">انسخ الرسالة</button><button class="link" id="saveImg">نزّل الصورة</button></div>
+    <div class="meta" id="shareHint">هتفتحلك قايمة المشاركة: اختار واتساب وبعدين جروب الماكينات. الرسالة النصية بتتنسخ كمان، لو ما ظهرتش مع الصورة الصقها.</div>
   </div></div>`;
   const setOff = () => $("#offline").hidden = navigator.onLine;
   window.onoffline = window.ononline = setOff; setOff();
@@ -242,29 +244,62 @@ function writeMachine(id, patch) {
 }
 
 /* ---------- WhatsApp ---------- */
-function mLabel(m) { return "#" + m.id + " " + m.ar + (m.brand && m.brand !== "—" && !/محلي|مصري|إيطالي/.test(m.brand) ? " (" + m.brand + ")" : ""); }
+function mLabel(m) { return "ماكينة " + m.id + " – " + m.ar; }
 function dayLabel() { const d = new Date(S.date + "T12:00:00"); return d.toLocaleDateString("ar-EG", { weekday: "long" }) + " " + d.getDate() + "/" + (d.getMonth() + 1); }
+function timeLabel(d = new Date()) { const h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0"); return ((h % 12) || 12) + ":" + m + (h < 12 ? " ص" : " م"); }
 function badList(m, s) { return s.vals.map((v, i) => v === "bad" ? CHECKS[m.type][i] : null).filter(Boolean); }
+const LINE = "━━━━━━━━━━━━━━";
 function buildReport() {
   const all = MACHINES.map(m => ({ m, s: mstate(m) }));
   const fin = all.filter(x => !x.s.partial), left = all.filter(x => x.s.partial);
   const bads = all.filter(x => x.s.bad > 0 && x.s.k !== "off"), offs = all.filter(x => x.s.k === "off");
-  const L = ["✅ تقرير فحص الماكينات", "📅 " + dayLabel() + " – وردية " + SHIFTS[S.shift], "👷 المشرف: " + S.me.name,
-    "اتفحص: " + fin.length + "/" + all.length + " | تمام: " + fin.filter(x => x.s.k === "ok").length + " | مشاكل: " + bads.length + " | واقفة: " + offs.length];
-  if (!bads.length && !offs.length && !left.length) L.push("", "كل الماكينات تمام ✅");
-  if (bads.length) { L.push("", "⚠️ المشاكل:"); bads.forEach(({ m, s }) => { L.push("• " + mLabel(m)); badList(m, s).forEach(x => L.push("   ❌ " + x)); if (s.r.note) L.push("   📝 " + s.r.note); }); }
-  if (offs.length) { L.push("", "⛔ واقفة:"); offs.forEach(({ m, s }) => L.push("• " + mLabel(m) + (s.r.note ? " – " + s.r.note : ""))); }
+  const ok = fin.filter(x => x.s.k === "ok").length;
   const notes = all.filter(x => x.s.r.note && !x.s.bad && x.s.k !== "off");
-  if (notes.length) { L.push("", "📝 ملاحظات:"); notes.forEach(({ m, s }) => L.push("• " + mLabel(m) + ": " + s.r.note)); }
-  if (left.length) L.push("", "⏳ ما اتفحصتش: " + left.map(x => "#" + x.m.id).join("، "));
+  const L = [
+    "*📋 تقرير فحص الماكينات*", LINE,
+    "📅 " + dayLabel() + " · وردية " + SHIFTS[S.shift],
+    "👷 المشرف: " + S.me.name,
+    "🕐 الساعة " + timeLabel(),
+    "",
+    "*الملخص (" + fin.length + " من " + all.length + " اتفحصت)*",
+    "✅ تمام: " + ok,
+    "⚠️ فيها مشاكل: " + bads.length,
+    "⛔ واقفة: " + offs.length,
+  ];
+  if (left.length) L.push("⏳ لسه ما اتفحصتش: " + left.length);
+  if (bads.length) {
+    L.push("", "*⚠️ المشاكل*");
+    bads.forEach(({ m, s }) => {
+      L.push("", "▪️ *" + mLabel(m) + "*");
+      badList(m, s).forEach(x => L.push("    ❌ " + x + " ← مش تمام"));
+      if (s.r.note) L.push("    📝 " + s.r.note);
+    });
+  }
+  if (offs.length) {
+    L.push("", "*⛔ ماكينات واقفة*");
+    offs.forEach(({ m, s }) => { L.push("", "▪️ *" + mLabel(m) + "*"); if (s.r.note) L.push("    📝 " + s.r.note); });
+  }
+  if (notes.length) {
+    L.push("", "*📝 ملاحظات*");
+    notes.forEach(({ m, s }) => L.push("▪️ " + mLabel(m) + ": " + s.r.note));
+  }
+  if (left.length && left.length < all.length) {
+    L.push("", "*⏳ لسه ما اتفحصتش*");
+    if (left.length <= 10) left.forEach(x => L.push("▪️ " + mLabel(x.m)));
+    else L.push(left.map(x => x.m.id).join(" · "));
+  }
+  L.push("", LINE);
+  if (left.length === all.length) L.push("⚪ لسه مفيش ماكينات اتفحصت");
+  else if (!bads.length && !offs.length) L.push(left.length ? "🟢 اللي اتفحص كله تمام" : "🟢 *كل الماكينات تمام*");
+  else L.push("🔴 *محتاج متابعة:* " + [bads.length ? bads.length + " مشكلة" : "", offs.length ? offs.length + " واقفة" : ""].filter(Boolean).join(" + "));
   return { text: L.join("\n"), left };
 }
 function alertText(m, s) {
-  const L = ["🚨 بلاغ عاجل – " + mLabel(m), "📅 " + dayLabel() + " – وردية " + SHIFTS[S.shift] + " – " + new Date().toLocaleTimeString("ar-EG", { hour: "numeric", minute: "2-digit" })];
+  const L = ["*🚨 بلاغ عاجل*", LINE, "▪️ *" + mLabel(m) + "*", ""];
   if (s.r.stop) L.push("⛔ الماكينة واقفة");
-  badList(m, s).forEach(x => L.push("❌ " + x));
+  badList(m, s).forEach(x => L.push("❌ " + x + " ← مش تمام"));
   if (s.r.note) L.push("📝 " + s.r.note);
-  L.push("👷 " + S.me.name);
+  L.push("", "📅 " + dayLabel() + " · وردية " + SHIFTS[S.shift] + " · " + timeLabel(), "👷 " + S.me.name);
   return L.join("\n");
 }
 function renderSent() {
@@ -276,8 +311,196 @@ function fillSheet() {
   const { text, left } = buildReport();
   $("#sheetMsg").textContent = text; $("#waGo").href = waLink(text);
   const w = $("#sheetWarn");
-  if (left.length) { w.hidden = false; w.innerHTML = `<b>لسه ${left.length} ماكينة ما اتفحصتش:</b><ul>${left.map(x => `<li>${esc(mLabel(x.m))}</li>`).join("")}</ul>`; $("#waGoT").textContent = "ابعت برضه على واتساب"; }
-  else { w.hidden = true; $("#waGoT").textContent = "افتح واتساب واختار الجروب"; }
+  if (left.length) { w.hidden = false; w.innerHTML = `<b>لسه ${left.length} ماكينة ما اتفحصتش:</b><ul>${left.map(x => `<li>${esc(mLabel(x.m))}</li>`).join("")}</ul>`; $("#waGoT").textContent = "ابعت برضه (الصورة والتقرير)"; }
+  else { w.hidden = true; $("#waGoT").textContent = "ابعت الصورة والتقرير"; }
+}
+
+/* ======================= Report image ======================= */
+const MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+function stampParts(d = new Date()) {
+  const h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0");
+  return { date: d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear(), time: ((h % 12) || 12) + ":" + m + (h < 12 ? " AM" : " PM") };
+}
+const RC = { // ألوان الصورة (ثابتة، فاتحة علشان تتقري في واتساب)
+  bg: "#f4f5f2", card: "#ffffff", ink: "#1d2321", muted: "#66706b", line: "#dfe2dc",
+  ok: "#1f7a4a", okSoft: "#e3f1e8", bad: "#c0281f", badSoft: "#fbe3e0", off: "#5f6570", offSoft: "#e6e7eb",
+  todo: "#a3aaa6", todoSoft: "#f0f1ee", accent: "#b4620f", head: "#1d2321"
+};
+const FONT = '"IBM Plex Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif';
+const loadImg = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+function wrapText(ctx, text, maxW) {
+  const words = String(text).split(/\s+/), lines = []; let cur = "";
+  for (const w of words) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur); return lines;
+}
+function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+const IMG = { W: 1500, PAD: 36, MAXH: 2600, PHOTO_W: 78, PHOTO_H: 112, NOTE_W: 330, CHIP_F: 19, BOX: 26 };
+
+// بيحسب ارتفاع صف الماكينة ومكان كل بند (من غير رسم)
+function layoutRow(ctx, m, s) {
+  const { W, PAD, PHOTO_W, NOTE_W, CHIP_F, BOX } = IMG;
+  const right = W - PAD - 14 - 16 - PHOTO_W - 18, left = PAD + NOTE_W + 22;
+  ctx.font = `500 ${CHIP_F}px ${FONT}`;
+  const items = CHECKS[m.type], chips = []; let x = right, y = 0;
+  items.forEach((label, i) => {
+    const w = BOX + 9 + ctx.measureText(label).width + 22;
+    if (x - w < left && x !== right) { x = right; y += BOX + 16; }
+    chips.push({ label, v: s.vals[i], xR: x, y, w }); x -= w + 10;
+  });
+  const chipsH = y + BOX;
+  ctx.font = `500 19px ${FONT}`;
+  const noteLines = noteFor(m, s).flatMap(n => wrapText(ctx, n.t, NOTE_W - 30).map(t => ({ t, c: n.c })));
+  const h = Math.max(IMG.PHOTO_H + 24, 22 + 34 + 12 + chipsH + 20, 20 + 30 * noteLines.length + 24);
+  return { chips, noteLines, h };
+}
+function noteFor(m, s) {
+  const out = [];
+  if (s.k === "off") out.push({ t: "⛔ الماكينة واقفة", c: RC.off });
+  if (s.bad) badList(m, s).forEach(b => out.push({ t: "✗ " + b, c: RC.bad }));
+  if (s.r.note) out.push({ t: "📝 " + s.r.note, c: s.bad || s.k === "off" ? RC.ink : RC.muted });
+  if (!out.length) out.push(s.k === "ok" ? { t: "✓ كله تمام", c: RC.ok } : s.k === "todo" ? { t: "لسه ما اتفحصتش", c: RC.todo } : { t: "الفحص لسه ما خلصش", c: RC.accent });
+  return out;
+}
+const stateColor = k => ({ ok: [RC.ok, RC.okSoft, "تمام"], bad: [RC.bad, RC.badSoft, "فيها مشكلة"], off: [RC.off, RC.offSoft, "واقفة"], part: [RC.accent, "#fbeedd", "ناقصة"], todo: [RC.todo, RC.todoSoft, "لسه"] }[k]);
+
+async function renderReportPages() {
+  try { await Promise.all([document.fonts.load(`600 24px "IBM Plex Sans Arabic"`), document.fonts.load(`500 19px "IBM Plex Sans Arabic"`), document.fonts.load(`700 40px "Readex Pro"`)]); } catch (e) {}
+  const { W, PAD, MAXH, PHOTO_W, PHOTO_H, NOTE_W, CHIP_F, BOX } = IMG;
+  const all = MACHINES.map(m => ({ m, s: mstate(m) }));
+  const photos = await Promise.all(all.map(x => loadImg(x.m.img)));
+  const meas = document.createElement("canvas").getContext("2d");
+  const rows = all.map((x, i) => ({ ...x, photo: photos[i], L: layoutRow(meas, x.m, x.s) }));
+  const fin = all.filter(x => !x.s.partial), cnt = {
+    ok: fin.filter(x => x.s.k === "ok").length, bad: all.filter(x => x.s.bad > 0 && x.s.k !== "off").length,
+    off: all.filter(x => x.s.k === "off").length, todo: all.filter(x => x.s.partial).length
+  };
+  const stamp = stampParts();
+  const HEAD1 = 300, HEAD2 = 120, FOOT = 60, GAP = 12;
+  // تقسيم الصفحات
+  const pages = []; let cur = [], hcur = HEAD1;
+  rows.forEach(r => { if (cur.length && hcur + r.L.h + GAP + FOOT > MAXH) { pages.push(cur); cur = []; hcur = HEAD2; } cur.push(r); hcur += r.L.h + GAP; });
+  if (cur.length) pages.push(cur);
+
+  return pages.map((pg, pi) => {
+    const head = pi === 0 ? HEAD1 : HEAD2;
+    const H = head + pg.reduce((a, r) => a + r.L.h + GAP, 0) + FOOT;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const c = cv.getContext("2d"); c.direction = "rtl"; c.textBaseline = "middle";
+    c.fillStyle = RC.bg; c.fillRect(0, 0, W, H);
+    // ---- header
+    c.fillStyle = RC.head; c.fillRect(0, 0, W, pi === 0 ? 150 : 96);
+    c.fillStyle = "#fff"; c.textAlign = "right";
+    c.font = `700 ${pi === 0 ? 42 : 32}px "Readex Pro", ${FONT}`; c.fillText("تقرير فحص الماكينات", W - PAD, pi === 0 ? 56 : 48);
+    { // التاريخ والساعة: الساعة على الشمال والتاريخ جنبها
+      const yy = pi === 0 ? 56 : 48; c.font = `600 ${pi === 0 ? 26 : 22}px ${FONT}`; c.fillStyle = "#e89a45";
+      c.direction = "ltr"; c.textAlign = "left"; c.fillText(stamp.time, PAD, yy);
+      const tW = c.measureText(stamp.time).width;
+      c.direction = "rtl"; c.textAlign = "right"; c.fillText(stamp.date + "  ·", PAD + tW + 14 + c.measureText(stamp.date + "  ·").width, yy);
+    }
+    if (pi === 0) {
+      c.textAlign = "right"; c.fillStyle = "#cfd5d1"; c.font = `500 24px ${FONT}`;
+      const lab = "وردية " + SHIFTS[S.shift] + "  ·  مشرف الوردية:"; c.fillText(lab, W - PAD, 112);
+      const nameX = W - PAD - c.measureText(lab).width - 10;
+      c.fillStyle = "#fff"; c.font = `600 24px ${FONT}`;
+      if (/^[\x00-\x7F]+$/.test(S.me.name)) { c.direction = "ltr"; c.textAlign = "right"; c.fillText(S.me.name, nameX, 112); c.direction = "rtl"; }
+      else c.fillText(S.me.name, nameX, 112);
+      c.textAlign = "left"; c.fillText("صفحة 1 من " + pages.length, PAD, 112);
+      // ملخص
+      const boxes = [["تمام", cnt.ok, RC.ok, RC.okSoft], ["فيها مشاكل", cnt.bad, RC.bad, RC.badSoft], ["واقفة", cnt.off, RC.off, RC.offSoft], ["لسه ما اتفحصتش", cnt.todo, RC.todo, RC.todoSoft]];
+      const bw = (W - PAD * 2 - 3 * 16) / 4;
+      boxes.forEach(([l, n, col, soft], i) => {
+        const x = W - PAD - (i + 1) * bw - i * 16, y = 172;
+        c.fillStyle = soft; rrect(c, x, y, bw, 96, 14); c.fill();
+        c.fillStyle = col; rrect(c, x + bw - 10, y, 10, 96, 5); c.fill();
+        c.textAlign = "right"; c.fillStyle = col; c.font = `700 44px "Readex Pro", ${FONT}`; c.fillText(String(n), x + bw - 30, y + 40);
+        c.fillStyle = RC.ink; c.font = `600 21px ${FONT}`; c.fillText(l, x + bw - 30, y + 76);
+      });
+    } else {
+      c.textAlign = "left"; c.fillStyle = "#cfd5d1"; c.font = `500 20px ${FONT}`; c.fillText("صفحة " + (pi + 1) + " من " + pages.length, PAD, 80);
+      c.textAlign = "right"; c.fillText("وردية " + SHIFTS[S.shift] + "  ·  " + S.me.name, W - PAD, 80);
+    }
+    // ---- rows
+    let y = head;
+    pg.forEach(({ m, s, photo, L }) => {
+      const [col, soft, lbl] = stateColor(s.k);
+      c.fillStyle = RC.card; rrect(c, PAD, y, W - PAD * 2, L.h, 14); c.fill();
+      c.strokeStyle = s.k === "bad" ? RC.bad : RC.line; c.lineWidth = s.k === "bad" ? 2 : 1; rrect(c, PAD, y, W - PAD * 2, L.h, 14); c.stroke();
+      c.fillStyle = col; rrect(c, W - PAD - 14, y, 14, L.h, 7); c.fill();
+      // صورة
+      const px = W - PAD - 14 - 16 - PHOTO_W, py = y + 12;
+      c.save(); rrect(c, px, py, PHOTO_W, PHOTO_H, 10); c.clip();
+      c.fillStyle = RC.todoSoft; c.fillRect(px, py, PHOTO_W, PHOTO_H);
+      if (photo) { const r = Math.max(PHOTO_W / photo.width, PHOTO_H / photo.height), iw = photo.width * r, ih = photo.height * r; c.drawImage(photo, px + (PHOTO_W - iw) / 2, py + (PHOTO_H - ih) / 2, iw, ih); }
+      c.restore();
+      c.fillStyle = RC.ink; rrect(c, px + PHOTO_W - 38, py + 6, 32, 26, 7); c.fill();
+      c.fillStyle = "#fff"; c.textAlign = "center"; c.font = `700 17px "Readex Pro", ${FONT}`; c.fillText(String(m.id), px + PHOTO_W - 22, py + 20);
+      // الاسم + الحالة
+      const nx = px - 18;
+      c.textAlign = "right"; c.fillStyle = RC.ink; c.font = `700 25px ${FONT}`; c.fillText(m.ar, nx, y + 34);
+      const nameW = c.measureText(m.ar).width;
+      c.font = `600 17px ${FONT}`; const tw = c.measureText(lbl).width + 26;
+      const tx = nx - nameW - 14 - tw;
+      c.fillStyle = soft; rrect(c, tx, y + 20, tw, 30, 15); c.fill();
+      c.fillStyle = col; c.textAlign = "center"; c.fillText(lbl, tx + tw / 2, y + 35);
+      // البنود
+      const cy0 = y + 34 + 30;
+      L.chips.forEach(ch => {
+        const bx = ch.xR - BOX, by = cy0 + ch.y;
+        c.fillStyle = ch.v === "bad" ? RC.badSoft : ch.v === "ok" ? "#f3f8f5" : "#f6f7f5"; rrect(c, ch.xR - ch.w, by - 4, ch.w, BOX + 8, 9); c.fill();
+        if (ch.v === "ok" || ch.v === "bad") { c.fillStyle = ch.v === "ok" ? RC.ok : RC.bad; rrect(c, bx - 6, by, BOX, BOX, 6); c.fill(); }
+        else { c.strokeStyle = "#b9bfbb"; c.lineWidth = 2; rrect(c, bx - 6, by, BOX, BOX, 6); c.stroke(); }
+        c.strokeStyle = "#fff"; c.lineWidth = 3.2; c.lineCap = "round"; c.beginPath();
+        const ox = bx - 6, oy = by;
+        if (ch.v === "ok") { c.moveTo(ox + 6, oy + 13.5); c.lineTo(ox + 11, oy + 19); c.lineTo(ox + 20, oy + 8); c.stroke(); }
+        if (ch.v === "bad") { c.moveTo(ox + 8, oy + 8); c.lineTo(ox + 18, oy + 18); c.moveTo(ox + 18, oy + 8); c.lineTo(ox + 8, oy + 18); c.stroke(); }
+        c.textAlign = "right"; c.fillStyle = ch.v === "bad" ? RC.bad : RC.ink; c.font = `${ch.v === "bad" ? 600 : 500} ${CHIP_F}px ${FONT}`;
+        c.fillText(ch.label, bx - 6 - 9, by + BOX / 2 + 1);
+      });
+      // عمود المشكلة
+      const nX = PAD + 12, nW = NOTE_W;
+      c.fillStyle = s.k === "bad" ? RC.badSoft : s.k === "off" ? RC.offSoft : "#f7f8f6"; rrect(c, nX, y + 12, nW, L.h - 24, 10); c.fill();
+      c.textAlign = "right";
+      L.noteLines.forEach((ln, i) => { c.fillStyle = ln.c; c.font = `${ln.c === RC.bad ? 600 : 500} 19px ${FONT}`; c.fillText(ln.t, nX + nW - 14, y + 12 + 22 + i * 30); });
+      y += L.h + GAP;
+    });
+    // footer
+    c.textAlign = "center"; c.fillStyle = RC.muted; c.font = `500 18px ${FONT}`;
+    c.fillText("✓ تمام   ·   ✗ فيه مشكلة   ·   ☐ لسه ما اتفحصش", W / 2, H - FOOT / 2);
+    return cv;
+  });
+}
+const canvasToFile = (cv, name) => new Promise(res => cv.toBlob(b => res(new File([b], name, { type: "image/png" })), "image/png"));
+let shareFiles = null, prevUrls = [];
+async function prepareShare() {
+  shareFiles = null; $("#shareImg").disabled = true;
+  prevUrls.forEach(u => URL.revokeObjectURL(u)); prevUrls = [];
+  $("#imgPrev").innerHTML = `<div class="meta">جاري تجهيز صورة الجدول…</div>`;
+  try {
+    const pages = await renderReportPages();
+    const base = "فحص-الماكينات-" + S.date + "-" + SHIFTS[S.shift];
+    shareFiles = await Promise.all(pages.map((cv, i) => canvasToFile(cv, base + (pages.length > 1 ? "-" + (i + 1) : "") + ".png")));
+    prevUrls = shareFiles.map(f => URL.createObjectURL(f));
+    $("#imgPrev").innerHTML = prevUrls.map((u, i) => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="صفحة ${i + 1} من صورة التقرير"></a>`).join("") + (prevUrls.length > 1 ? `<div class="meta">${prevUrls.length} صور (الجدول طويل فاتقسم)</div>` : "");
+    $("#shareImg").disabled = false;
+  } catch (e) { console.error(e); $("#imgPrev").innerHTML = `<div class="err">ما قدرتش أجهز الصورة. تقدر تبعت النص بس.</div>`; }
+}
+function markSent() { S.api.patchShift(key(), { date: S.date, shift: S.shift, sent: { at: new Date().toISOString(), by: S.me.name, byUid: S.me.uid } }).catch(err => toast(authError(err))); }
+function downloadFiles() {
+  shareFiles.forEach((f, i) => setTimeout(() => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }, i * 400));
+}
+async function shareReport() {
+  if (!shareFiles) return;
+  const text = buildReport().text;
+  try { await navigator.clipboard.writeText(text); } catch (e) {}
+  if (navigator.canShare && navigator.canShare({ files: shareFiles })) {
+    try { await navigator.share({ files: shareFiles, text }); markSent(); $("#sheet").hidden = true; toast("اتبعت. لو الرسالة النصية ما ظهرتش، الصقها في الجروب"); }
+    catch (e) { if (e.name !== "AbortError") toast("المشاركة ما نفعتش. نزّل الصورة وابعتها بإيدك"); }
+  } else {
+    // كمبيوتر أو متصفح مش بيدعم مشاركة الصور: ننزّل الصورة ونفتح واتساب بالنص
+    downloadFiles(); window.open(waLink(text), "_blank"); markSent(); $("#sheet").hidden = true;
+    toast("الصورة نزلت على الجهاز. ارفعها في الجروب مع الرسالة");
+  }
 }
 
 /* ======================= History ======================= */
@@ -370,13 +593,15 @@ document.addEventListener("click", e => {
   if (a) { const id = +a.dataset.alert, m = MACHINES.find(x => x.id === id); a.href = waLink(alertText(m, mstate(m))); setTimeout(() => writeMachine(id, { alertAt: new Date().toISOString() }), 0); return; }
   if (e.target.closest("#waGo")) {
     $("#waGo").href = waLink(buildReport().text);
-    setTimeout(() => { S.api.patchShift(key(), { date: S.date, shift: S.shift, sent: { at: new Date().toISOString(), by: S.me.name, byUid: S.me.uid } }).catch(err => toast(authError(err))); $("#sheet").hidden = true; }, 0);
+    setTimeout(() => { markSent(); $("#sheet").hidden = true; }, 0);
     return;
   }
   const t = e.target.closest("button"); if (!t) { if (e.target.id === "sheet") $("#sheet").hidden = true; return; }
   const d = t.dataset;
   if (d.tab) return go(d.tab);
-  if (t.id === "openSend") { fillSheet(); $("#sheet").hidden = false; $("#closeSheet").focus(); return; }
+  if (t.id === "openSend") { fillSheet(); $("#sheet").hidden = false; $("#closeSheet").focus(); prepareShare(); return; }
+  if (t.id === "shareImg") { shareReport(); return; }
+  if (t.id === "saveImg") { if (shareFiles) downloadFiles(); return; }
   if (t.id === "closeSheet") { $("#sheet").hidden = true; return; }
   if (t.id === "copyMsg") {
     const txt = $("#sheetMsg").textContent;
